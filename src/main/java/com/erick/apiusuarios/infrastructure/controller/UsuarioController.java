@@ -21,30 +21,32 @@ public class UsuarioController {
     }
 
     @PostMapping
-    public ResponseEntity<Usuario> crear(@RequestBody Usuario usuario) {
+    public ResponseEntity<UsuarioResponse> crear(@RequestBody Usuario usuario) {
         Usuario creado = service.crear(usuario);
-        return ResponseEntity.status(HttpStatus.CREATED).body(creado);
+        return ResponseEntity.status(HttpStatus.CREATED).body(UsuarioResponse.from(creado));
     }
 
     @GetMapping
-    public List<Usuario> listar() {
-        return service.listar();
+    public List<UsuarioResponse> listar() {
+        return service.listar().stream().map(UsuarioResponse::from).toList();
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Usuario> buscarPorId(@PathVariable Long id) {
+    public ResponseEntity<UsuarioResponse> buscarPorId(@PathVariable Long id) {
 
         return service.buscarPorId(id)
+                .map(UsuarioResponse::from)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<Usuario> actualizar(
+    public ResponseEntity<UsuarioResponse> actualizar(
             @PathVariable Long id,
             @RequestBody Usuario usuario) {
 
         return service.actualizar(id, usuario)
+                .map(UsuarioResponse::from)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.notFound().build());
     }

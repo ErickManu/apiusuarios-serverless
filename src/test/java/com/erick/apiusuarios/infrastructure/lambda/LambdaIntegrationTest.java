@@ -112,12 +112,34 @@ class LambdaIntegrationTest {
         var created = request("POST", "/usuarios", JSON.writeValueAsString(Map.of(
                 "nombre", "Inicial", "email", email, "password", PASSWORD)), token, "application/json", false, Map.of());
         assertThat(created.path("statusCode").asInt()).isEqualTo(201);
-        String path = "/usuarios/" + JSON.readTree(body(created)).path("id").asLong();
-        assertThat(request("GET", path, null, token, "application/json", false, Map.of()).path("statusCode").asInt()).isEqualTo(200);
+        var createdUser = JSON.readTree(body(created));
+        assertPublicUser(createdUser);
+        String path = "/usuarios/" + createdUser.path("id").asLong();
+        String createdUserToken = login(email, PASSWORD);
+        var found = request("GET", path, null, createdUserToken, "application/json", false, Map.of());
+        assertThat(found.path("statusCode").asInt()).isEqualTo(200);
+        assertPublicUser(JSON.readTree(body(found)));
+        var listed = request("GET", "/usuarios", null, token, "application/json", false, Map.of());
+        assertThat(listed.path("statusCode").asInt()).isEqualTo(200);
+        var users = JSON.readTree(body(listed));
+        assertThat(users.isArray()).isTrue();
+        assertThat(users.size()).isPositive();
+        users.forEach(LambdaIntegrationTest::assertPublicUser);
         var updated = request("PUT", path, JSON.writeValueAsString(Map.of("nombre", "Actualizado", "email", email)),
                 token, "application/json", false, Map.of());
         assertThat(updated.path("statusCode").asInt()).isEqualTo(200);
+        assertPublicUser(JSON.readTree(body(updated)));
         assertThat(JSON.readTree(body(updated)).path("nombre").asText()).isEqualTo("Actualizado");
+        login(email, PASSWORD);
+        String replacementPassword = UUID.randomUUID().toString();
+        var passwordChanged = request("PUT", path, JSON.writeValueAsString(Map.of(
+                        "nombre", "Actualizado", "email", email, "password", replacementPassword)),
+                token, "application/json", false, Map.of());
+        assertThat(passwordChanged.path("statusCode").asInt()).isEqualTo(200);
+        assertPublicUser(JSON.readTree(body(passwordChanged)));
+        String changedUserToken = login(email, replacementPassword);
+        assertThat(request("GET", path, null, changedUserToken, "application/json", false, Map.of())
+                .path("statusCode").asInt()).isEqualTo(200);
         assertThat(request("DELETE", path, null, token, "application/json", false, Map.of()).path("statusCode").asInt()).isEqualTo(204);
         assertThat(request("GET", path, null, token, "application/json", false, Map.of()).path("statusCode").asInt()).isEqualTo(404);
     }
@@ -171,8 +193,18 @@ class LambdaIntegrationTest {
     }
 
     private static String login() throws Exception {
+        return login("lambda-test@example.invalid", PASSWORD);
+    }
+
+    private static void assertPublicUser(JsonNode user) {
+        assertThat(user.has("password")).isFalse();
+        assertThat(user.size()).isEqualTo(3);
+        assertThat(user.hasNonNull("id") && user.hasNonNull("nombre") && user.hasNonNull("email")).isTrue();
+    }
+
+    private static String login(String email, String password) throws Exception {
         var result = request("POST", "/auth/login", JSON.writeValueAsString(Map.of(
-                "email", "lambda-test@example.invalid", "password", PASSWORD)), null, "application/json", false, Map.of());
+                "email", email, "password", password)), null, "application/json", false, Map.of());
         assertThat(result.path("statusCode").asInt()).isEqualTo(200);
         var json = JSON.readTree(body(result));
         assertThat(json.size()).isEqualTo(1);
