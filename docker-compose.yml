@@ -1,0 +1,48 @@
+services:
+
+  db:
+    image: postgres:16
+    container_name: apiusuarios-db
+
+    environment:
+      POSTGRES_DB: api_usuarios
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+
+    ports:
+      - "5433:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d api_usuarios"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+
+  backend:
+    build: .
+    container_name: apiusuarios-backend
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/api_usuarios
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      JWT_SECRET: ${JWT_SECRET:?Define JWT_SECRET en el entorno o en .env}
+
+    ports:
+      - "8080:8080"
+
+    volumes:
+      - ./uploads:/app/uploads
+
+
+volumes:
+  postgres_data:
