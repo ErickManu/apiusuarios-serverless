@@ -59,13 +59,28 @@ automáticamente y no se declara en `environment`, porque AWS la reserva.
 `SPRING_PROFILES_ACTIVE` se configura como `lambda`.
 
 `sensitive` oculta los valores en la salida habitual, pero **no los elimina del
-estado de Terraform ni de un plan guardado**. Esta configuración usa estado local;
-los archivos de estado, planes y tfvars están ignorados por Git. Protegerlos y,
-antes de un uso compartido, definir un backend de estado con acceso controlado.
+estado de Terraform ni de un plan guardado**. El backend remoto S3 está definido
+en `backend.tf`, sin credenciales AWS:
+
+- Bucket existente: `apiusuarios-tfstate-625228299719-us-east-2`.
+- Key: `apiusuarios/dev/terraform.tfstate`.
+- Región: `us-east-2`.
+- Cifrado: `encrypt = true`.
+- Bloqueo nativo S3: `use_lockfile = true`, con Terraform >= 1.10.
+
+El bucket de estado fue creado manualmente y no está administrado por este módulo.
+Es independiente de los dos buckets de la aplicación. Los respaldos locales,
+planes y tfvars permanecen ignorados por Git; el estado contiene datos sensibles.
+
+La identidad que ejecute Terraform necesita `s3:ListBucket` sobre el bucket de
+estado, `s3:GetObject` y `s3:PutObject` sobre la key del estado, y
+`s3:GetObject`, `s3:PutObject` y `s3:DeleteObject` sobre
+`apiusuarios/dev/terraform.tfstate.tflock`. Son permisos de la identidad de
+Terraform, no del rol de ejecución de Lambda.
 
 ## Comprobaciones sin despliegue
 
-Con Terraform >= 1.5 y < 2, AWS CLI configurado y el JAR ya compilado:
+Con Terraform >= 1.10 y < 2, AWS CLI configurado y el JAR ya compilado:
 
 ```powershell
 Set-Location 'C:\Users\Erick\OneDrive\Documentos\apiusuarios\apiusuarios\terraform'
@@ -79,11 +94,16 @@ terraform plan -input=false
 `terraform init` genera `.terraform.lock.hcl`, que debe versionarse; `.terraform/`
 contiene los proveedores descargados y se ignora. No se ejecuta `apply` en esta etapa.
 
-El plan de comprobación de esta etapa utiliza valores ficticios temporales para
-las cuatro entradas privadas, sin guardarlos en tfvars ni generar un archivo de
-plan aplicable. No comprueba credenciales de Neon, conectividad de la base de datos
-ni el arranque de Lambda. Antes del despliegue se necesita un nuevo plan con los
-valores correctos.
+Para migrar el estado local existente se ejecutó `terraform init -migrate-state`
+y se confirmó la copia del estado a S3. Se conservó un respaldo local ignorado
+por Git en `terraform.tfstate.pre-s3.backup`.
+
+En otros equipos y en el futuro workflow de GitHub Actions se debe ejecutar
+`terraform init -input=false`, sin volver a migrar ni crear un estado vacío.
+Usar el workspace `default`, la misma configuración del backend y los valores
+reales `TF_VAR_*` de la infraestructura desplegada. No reutilizar un plan guardado
+antes de la migración; generar siempre uno nuevo después de inicializar el backend.
+Esta etapa no crea ni modifica workflows de GitHub Actions.
 
 Los buckets tienen `force_destroy=false`: Terraform no vacía automáticamente
 los archivos para destruirlos. Los datos locales previos no se transfieren a S3.
