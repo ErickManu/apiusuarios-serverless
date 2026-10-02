@@ -1,0 +1,15 @@
+# Copy to terraform.tfvars, which must remain ignored by Git.
+aws_region           = "us-east-2"
+project_name         = "apiusuarios"
+stage_name           = "dev"
+lambda_artifact_path = "../target/apiusuarios-0.0.1-SNAPSHOT-lambda.jar"
+lambda_memory_size   = 1024
+lambda_timeout       = 28
+log_retention_days   = 14
+database_pool_size   = 2
+
+# Supply these separately through environment variables, without committing them:
+# TF_VAR_database_url      -> DATABASE_URL (jdbc:postgresql://... with TLS)
+# TF_VAR_database_username -> DATABASE_USERNAME
+# TF_VAR_database_password -> DATABASE_PASSWORD
+# TF_VAR_jwt_secret        -> JWT_SECRET (at least 32 characters)
