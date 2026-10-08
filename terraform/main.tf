@@ -155,6 +155,7 @@ resource "aws_lambda_function" "backend" {
   source_code_hash = filebase64sha256(local.lambda_artifact_path)
 
   # No VPC: the managed Lambda network can reach public Neon PostgreSQL over TLS.
+
   environment {
     variables = {
       SPRING_PROFILES_ACTIVE = "lambda"
@@ -164,9 +165,12 @@ resource "aws_lambda_function" "backend" {
       JWT_SECRET             = var.jwt_secret
       DATABASE_POOL_SIZE     = tostring(var.database_pool_size)
       S3_BUCKET              = aws_s3_bucket.storage["files"].id
-      # AWS_REGION is a reserved variable supplied automatically by Lambda.
+
+      # SNS para enviar notificaciones
+      SNS_TOPIC_ARN = aws_sns_topic.notifications.arn
     }
   }
+
 
   depends_on = [aws_iam_role_policy.lambda_runtime]
 }

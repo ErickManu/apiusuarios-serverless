@@ -123,3 +123,15 @@ variable "jwt_secret" {
     error_message = "jwt_secret must contain at least 32 characters and must not be blank."
   }
 }
+
+
+variable "notification_sender_email" {
+  description = "Correo verificado en Amazon SES para enviar notificaciones."
+  type        = string
+  default     = "erickmarte56@gmail.com"
+
+  validation {
+    condition     = can(regex("^[^@ ]+@[^@ ]+\\.[^@ ]+$", var.notification_sender_email))
+    error_message = "Introduce una dirección de correo electrónico válida."
+  }
+}
