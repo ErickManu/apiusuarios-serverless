@@ -3,9 +3,24 @@ resource "aws_sns_topic" "notifications" {
   name = "${local.name}-notifications"
 }
 
+
+# Cola para mensajes que fallan repetidamente
+resource "aws_sqs_queue" "notifications_dlq" {
+  name = "${local.name}-notifications-dlq"
+
+  message_retention_seconds = 1209600
+}
+
+# Cola principal de notificaciones
 resource "aws_sqs_queue" "notifications" {
-  name                       = "${local.name}-notifications-queue"
+  name = "${local.name}-notifications-queue"
+
   visibility_timeout_seconds = 180
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.notifications_dlq.arn
+    maxReceiveCount     = 3
+  })
 }
 
 resource "aws_sqs_queue_policy" "notifications" {
