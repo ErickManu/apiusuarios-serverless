@@ -16,6 +16,9 @@ import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.*;
+import software.amazon.awssdk.services.sns.SnsClient;
+import software.amazon.awssdk.services.sns.model.PublishRequest;
+import software.amazon.awssdk.services.sns.model.PublishResponse;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -40,10 +43,18 @@ class LambdaIntegrationTest {
     private static final String PASSWORD = UUID.randomUUID().toString();
     private static StreamLambdaHandler handler;
     private static Context context;
+    private static final SnsClient SNS = mock(SnsClient.class);
 
     @TestConfiguration(proxyBeanMethods = false)
     @Import(ApiusuariosApplication.class)
     static class TestApplication {
+        @Bean
+        @Primary
+        SnsClient simulatedSns() {
+            when(SNS.publish(any(PublishRequest.class))).thenReturn(PublishResponse.builder().messageId("offline").build());
+            return SNS;
+        }
+
         @Bean
         @Primary
         S3Client simulatedS3() {
@@ -83,6 +94,25 @@ class LambdaIntegrationTest {
             statement.setString(3, new BCryptPasswordEncoder().encode(PASSWORD));
             statement.executeUpdate();
         }
+    }
+
+    @Test
+    void notificationRouteWorksWithJwtThroughApiGatewayProxyAndSupportsCors() throws Exception {
+        String payload = JSON.writeValueAsString(Map.of(
+                "email", "test@example.invalid", "subject", "Aviso", "message", "Hola"));
+        int before = mockingDetails(SNS).getInvocations().size();
+        for (String token : new String[]{null, "invalid-token"}) {
+            assertThat(request("POST", "/notifications/send", payload, token, "application/json", false, Map.of())
+                    .path("statusCode").asInt()).isIn(401, 403);
+        }
+        assertThat(mockingDetails(SNS).getInvocations()).hasSize(before);
+        assertThat(request("POST", "/notifications/send", payload, login(), "application/json", false, Map.of())
+                .path("statusCode").asInt()).isEqualTo(202);
+        assertThat(mockingDetails(SNS).getInvocations()).hasSize(before + 1);
+        assertThat(request("OPTIONS", "/notifications/send", null, null, "application/json", false, Map.of(
+                "Origin", "capacitor://localhost", "Access-Control-Request-Method", "POST",
+                "Access-Control-Request-Headers", "authorization,content-type"))
+                .path("statusCode").asInt()).isEqualTo(200);
     }
 
     @Test

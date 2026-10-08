@@ -3,6 +3,10 @@
 Arquitectura: **API Gateway REST API -> Lambda Java 21 -> Neon PostgreSQL**.
 Los archivos de la aplicación se almacenan en un bucket S3 privado.
 
+Notificaciones: **Lambda Java → SNS → SQS (con DLQ) → Lambda Python → SES**.
+La [revisión de notificaciones](../docs/notification-review.md) documenta las
+correcciones, evidencias sobre el tema eliminado, protección y pendientes.
+
 ## Recursos
 
 - Lambda con el handler Spring Boot existente, perfil `lambda`, 1024 MiB y timeout
@@ -80,7 +84,17 @@ Terraform, no del rol de ejecución de Lambda.
 
 ## Comprobaciones sin despliegue
 
-Con Terraform >= 1.10 y < 2, AWS CLI configurado y el JAR ya compilado:
+Comprobaciones locales, con los proveedores ya instalados:
+
+```powershell
+terraform fmt -check -recursive
+terraform validate
+terraform test -no-color
+```
+
+Las pruebas usan proveedores simulados y `command = plan`: no acceden a AWS ni
+aplican recursos. Para inspeccionar infraestructura remota más adelante, con
+Terraform >= 1.10 y < 2, AWS CLI configurado y el JAR ya compilado:
 
 ```powershell
 Set-Location 'C:\Users\Erick\OneDrive\Documentos\apiusuarios\apiusuarios\terraform'
@@ -103,7 +117,9 @@ En otros equipos y en el futuro workflow de GitHub Actions se debe ejecutar
 Usar el workspace `default`, la misma configuración del backend y los valores
 reales `TF_VAR_*` de la infraestructura desplegada. No reutilizar un plan guardado
 antes de la migración; generar siempre uno nuevo después de inicializar el backend.
-Esta etapa no crea ni modifica workflows de GitHub Actions.
+El workflow de GitHub Actions es exclusivamente manual (`workflow_dispatch`),
+con `desplegar` desactivado por defecto. Su verificador del plan bloquea
+eliminaciones inesperadas antes del apply condicionado a ese booleano.
 
 Los buckets tienen `force_destroy=false`: Terraform no vacía automáticamente
 los archivos para destruirlos. Los datos locales previos no se transfieren a S3.

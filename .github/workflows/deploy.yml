@@ -31,9 +31,9 @@ jobs:
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_REGION: ${{ secrets.AWS_REGION }}
+      AWS_REGION: us-east-2
 
-      TF_VAR_aws_region: ${{ secrets.AWS_REGION }}
+      TF_VAR_aws_region: us-east-2
       TF_VAR_database_url: ${{ secrets.DATABASE_URL }}
       TF_VAR_database_username: ${{ secrets.DATABASE_USERNAME }}
       TF_VAR_database_password: ${{ secrets.DATABASE_PASSWORD }}
@@ -73,6 +73,8 @@ jobs:
         run: |
           test -s notification-lambda/lambda_function.py
           python3 -m py_compile notification-lambda/lambda_function.py
+          python3 -m unittest discover -s notification-lambda -p 'test_*.py' -v
+          python3 -m unittest discover -s scripts/tests -p 'test_*.py' -v
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6.3.0
@@ -93,11 +95,15 @@ jobs:
 
       - name: Terraform Format
         working-directory: terraform
-        run: terraform fmt -check
+        run: terraform fmt -check -recursive
 
       - name: Terraform Validate
         working-directory: terraform
         run: terraform validate
+
+      - name: Terraform notification tests (mocked providers)
+        working-directory: terraform
+        run: terraform test -no-color
 
       - name: Terraform Plan
         working-directory: terraform
@@ -107,7 +113,8 @@ jobs:
             -lock-timeout=5m \
             -out=tfplan
 
-          terraform show -no-color tfplan > plan-review.txt
+          # The JSON contains secrets: keep it on this runner, never upload/log it.
+          terraform show -json tfplan | python3 ../scripts/check_terraform_plan.py
 
       - name: Terraform Apply
         if: ${{ inputs.desplegar == true }}
@@ -139,13 +146,32 @@ jobs:
         run: |
           echo "Checking notification infrastructure..."
 
-          terraform state show aws_sns_topic.notifications
-          terraform state show aws_sqs_queue.notifications
-          terraform state show aws_sqs_queue.notifications_dlq
-          terraform state show aws_lambda_function.notification_lambda
-          terraform state show aws_lambda_event_source_mapping.notification_sqs
+          # Query the real resources; Terraform state alone does not prove they exist.
+          aws sns get-topic-attributes \
+            --topic-arn "$(terraform output -raw notification_topic_arn)" \
+            --query 'Attributes.TopicArn' --output text
+          aws sns get-subscription-attributes \
+            --subscription-arn "$(terraform output -raw notification_subscription_arn)" \
+            --query 'Attributes.{TopicArn:TopicArn,Endpoint:Endpoint,RawMessageDelivery:RawMessageDelivery}' \
+            --output json
+          aws sqs get-queue-attributes \
+            --queue-url "$(terraform output -raw notification_queue_url)" \
+            --attribute-names QueueArn VisibilityTimeout RedrivePolicy --output json
+          aws sqs get-queue-attributes \
+            --queue-url "$(terraform output -raw notification_dlq_url)" \
+            --attribute-names QueueArn MessageRetentionPeriod --output json
+          aws lambda wait function-updated \
+            --function-name "$(terraform output -raw notification_lambda_function_name)"
+          aws lambda get-function-configuration \
+            --function-name "$(terraform output -raw notification_lambda_function_name)" \
+            --query '{FunctionName:FunctionName,State:State,LastUpdateStatus:LastUpdateStatus}' \
+            --output json
+          aws lambda get-event-source-mapping \
+            --uuid "$(terraform output -raw notification_event_source_mapping_uuid)" \
+            --query '{State:State,EventSourceArn:EventSourceArn,FunctionResponseTypes:FunctionResponseTypes}' \
+            --output json
 
-          echo "Notification infrastructure verified in Terraform state."
+          echo "Notification resource queries completed. Review mapping State above."
 
 
       - name: Deployment summary

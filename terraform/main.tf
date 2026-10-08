@@ -172,7 +172,11 @@ resource "aws_lambda_function" "backend" {
   }
 
 
-  depends_on = [aws_iam_role_policy.lambda_runtime]
+  depends_on = [
+    aws_iam_role_policy.lambda_runtime,
+    aws_iam_role_policy.backend_sns,
+    aws_sns_topic_subscription.notifications,
+  ]
 }
 
 resource "aws_api_gateway_rest_api" "backend" {

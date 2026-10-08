@@ -20,14 +20,25 @@ resource "aws_iam_role" "notification_lambda" {
   })
 }
 
-resource "aws_iam_role_policy_attachment" "notification_basic" {
-  role       = aws_iam_role.notification_lambda.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
-}
+resource "aws_iam_role_policy" "notification_runtime" {
+  name = "${local.name}-notification-runtime"
+  role = aws_iam_role.notification_lambda.id
 
-resource "aws_iam_role_policy_attachment" "notification_sqs" {
-  role       = aws_iam_role.notification_lambda.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "${aws_cloudwatch_log_group.notification_lambda.arn}:*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"]
+        Resource = aws_sqs_queue.notifications.arn
+      }
+    ]
+  })
 }
 
 data "aws_caller_identity" "current" {}
@@ -69,8 +80,7 @@ resource "aws_lambda_function" "notification_lambda" {
   }
 
   depends_on = [
-    aws_iam_role_policy_attachment.notification_basic,
-    aws_iam_role_policy_attachment.notification_sqs,
+    aws_iam_role_policy.notification_runtime,
     aws_iam_role_policy.notification_ses,
     aws_cloudwatch_log_group.notification_lambda
   ]

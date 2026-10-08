@@ -1,7 +1,13 @@
 
+
 resource "aws_sns_topic" "notifications" {
   name = "${local.name}-notifications"
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }
+
 
 
 # Cola para mensajes que fallan repetidamente

@@ -13,6 +13,11 @@ import com.erick.apiusuarios.domain.port.ArchivoStoragePort;
 import com.erick.apiusuarios.infrastructure.storage.LocalArchivoStorageAdapter;
 import com.erick.apiusuarios.infrastructure.security.JwtService;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.sns.SnsClient;
+import software.amazon.awssdk.services.sns.model.PublishRequest;
+import software.amazon.awssdk.services.sns.model.PublishResponse;
+import software.amazon.awssdk.services.sns.model.NotFoundException;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.erick.apiusuarios.domain.port.UsuarioRepositoryPort;
@@ -25,6 +30,8 @@ import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -42,6 +49,58 @@ class ApiusuariosApplicationTests {
     @Autowired MockMvc mvc;
     @Autowired JwtService jwtService;
     @Autowired UsuarioRepositoryPort usuarioRepository;
+    @MockitoBean SnsClient sns;
+
+    @Test
+    void notificationsRequireJwtAndAcceptAuthenticatedRequests() throws Exception {
+        byte[] payload = new ObjectMapper().writeValueAsBytes(Map.of(
+                "email", "test@example.invalid", "subject", "Aviso", "message", "Hola"));
+        for (String token : new String[]{"", "Bearer invalid-token"}) {
+            int status = mvc.perform(post("/notifications/send").header("Authorization", token)
+                            .contentType(MediaType.APPLICATION_JSON).content(payload))
+                    .andReturn().getResponse().getStatus();
+            assertThat(status).isIn(401, 403);
+        }
+        verifyNoInteractions(sns);
+        when(sns.publish(any(PublishRequest.class))).thenReturn(PublishResponse.builder().messageId("test").build());
+        mvc.perform(post("/notifications/send")
+                        .header("Authorization", "Bearer " + jwtService.generarToken("test@example.invalid"))
+                        .contentType(MediaType.APPLICATION_JSON).content(payload))
+                .andExpect(status().isAccepted());
+        verify(sns).publish(any(PublishRequest.class));
+    }
+
+    @Test
+    void invalidNotificationInputIsRejectedBeforePublishing() throws Exception {
+        var json = new ObjectMapper();
+        String authorization = "Bearer " + jwtService.generarToken("test@example.invalid");
+        for (Map<String, String> payload : java.util.List.of(
+                Map.of("email", "invalid", "subject", "Aviso", "message", "Hola"),
+                Map.of("email", "test@example.invalid", "subject", " ", "message", "Hola"),
+                Map.of("email", "test@example.invalid", "subject", "One\r\nTwo", "message", "Hola"),
+                Map.of("email", "test@example.invalid", "subject", "Aviso"))) {
+            mvc.perform(post("/notifications/send").header("Authorization", authorization)
+                            .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(payload)))
+                    .andExpect(status().isBadRequest());
+        }
+        mvc.perform(post("/notifications/send").header("Authorization", authorization)
+                        .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsBytes(Map.of(
+                                "email", "test@example.invalid", "subject", "Aviso", "message", "ñ".repeat(140000)))))
+                .andExpect(status().isPayloadTooLarge());
+        verifyNoInteractions(sns);
+    }
+
+    @Test
+    void missingTopicReturns503WithoutLeakingAwsDetails() throws Exception {
+        when(sns.publish(any(PublishRequest.class))).thenThrow(
+                NotFoundException.builder().message("private AWS details").build());
+        var result = mvc.perform(post("/notifications/send")
+                        .header("Authorization", "Bearer " + jwtService.generarToken("test@example.invalid"))
+                        .contentType(MediaType.APPLICATION_JSON).content(new ObjectMapper().writeValueAsBytes(Map.of(
+                                "email", "test@example.invalid", "subject", "Aviso", "message", "Hola"))))
+                .andExpect(status().isServiceUnavailable()).andReturn();
+        assertThat(result.getResponse().getContentAsString()).doesNotContain("private AWS details");
+    }
 
 	@Test
 	void contextLoads() {
