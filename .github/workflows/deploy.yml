@@ -132,22 +132,21 @@ jobs:
             --query '{FunctionName:FunctionName,Runtime:Runtime,State:State,LastUpdateStatus:LastUpdateStatus}' \
             --output table
 
+      
       - name: Verify notification infrastructure
         if: ${{ inputs.desplegar == true }}
+        working-directory: terraform
         run: |
-          echo "Checking notification resources..."
+          echo "Checking notification infrastructure..."
 
-          aws sns list-topics \
-            --query 'Topics[].TopicArn' \
-            --output table
+          terraform state show aws_sns_topic.notifications
+          terraform state show aws_sqs_queue.notifications
+          terraform state show aws_sqs_queue.notifications_dlq
+          terraform state show aws_lambda_function.notification_lambda
+          terraform state show aws_lambda_event_source_mapping.notification_sqs
 
-          aws sqs list-queues \
-            --query 'QueueUrls' \
-            --output table
+          echo "Notification infrastructure verified in Terraform state."
 
-          aws lambda list-functions \
-            --query 'Functions[?contains(FunctionName, `notification`)].{Name:FunctionName,Runtime:Runtime,State:State}' \
-            --output table
 
       - name: Deployment summary
         if: ${{ inputs.desplegar == true }}
