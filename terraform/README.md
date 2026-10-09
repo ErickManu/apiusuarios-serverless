@@ -6,6 +6,10 @@ Los archivos de la aplicación se almacenan en un bucket S3 privado.
 Notificaciones: **Lambda Java → SNS → SQS (con DLQ) → Lambda Python → SES**.
 La [revisión de notificaciones](../docs/notification-review.md) documenta las
 correcciones, evidencias sobre el tema eliminado, protección y pendientes.
+La [migración IAM en dos fases](../docs/notification-infrastructure-proposal.md)
+conserva ahora los dos attachments administrados de la Lambda Python junto con
+la política limitada. El verificador bloquea su retirada durante la fase 1;
+la fase 2 requiere comprobar los permisos y autorizar un cambio separado.
 
 ## Recursos
 

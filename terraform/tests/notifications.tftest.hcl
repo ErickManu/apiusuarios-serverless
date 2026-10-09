@@ -20,6 +20,16 @@ override_data {
 }
 
 override_resource {
+  target          = aws_iam_role.notification_lambda
+  override_during = plan
+  values = {
+    # AWS IAM role IDs use the role name; make it known without an apply.
+    id  = "apiusuarios-dev-notification-lambda-role"
+    arn = "arn:aws:iam::000000000000:role/apiusuarios-dev-notification-lambda-role"
+  }
+}
+
+override_resource {
   target          = aws_sns_topic.notifications
   override_during = plan
   values = {
@@ -112,7 +122,19 @@ run "notification_contract" {
 
   assert {
     condition = (
+      aws_iam_role_policy_attachment.notification_basic.role == aws_iam_role.notification_lambda.name &&
+      aws_iam_role_policy_attachment.notification_basic.policy_arn == "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole" &&
+      aws_iam_role_policy_attachment.notification_sqs.role == aws_iam_role.notification_lambda.name &&
+      aws_iam_role_policy_attachment.notification_sqs.policy_arn == "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole" &&
+      aws_iam_role_policy.notification_runtime.role == aws_iam_role.notification_lambda.id
+    )
+    error_message = "Phase 1 must keep both existing managed attachments alongside the scoped policy on the same role."
+  }
+
+  assert {
+    condition = (
       jsondecode(aws_iam_role_policy.notification_runtime.policy).Statement[0].Resource == "${aws_cloudwatch_log_group.notification_lambda.arn}:*" &&
+      jsondecode(aws_iam_role_policy.notification_runtime.policy).Statement[0].Action == ["logs:CreateLogStream", "logs:PutLogEvents"] &&
       jsondecode(aws_iam_role_policy.notification_runtime.policy).Statement[1].Resource == aws_sqs_queue.notifications.arn &&
       jsondecode(aws_iam_role_policy.notification_runtime.policy).Statement[1].Action == ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"] &&
       jsondecode(aws_iam_role_policy.notification_ses.policy).Statement[0].Resource == "arn:aws:ses:us-east-2:000000000000:identity/sender@example.invalid" &&

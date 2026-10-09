@@ -20,6 +20,18 @@ resource "aws_iam_role" "notification_lambda" {
   })
 }
 
+# Phase 1: keep the existing attachments until the scoped policy is verified.
+# Preserve their original Terraform addresses; do not use count or rename them.
+resource "aws_iam_role_policy_attachment" "notification_basic" {
+  role       = aws_iam_role.notification_lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+resource "aws_iam_role_policy_attachment" "notification_sqs" {
+  role       = aws_iam_role.notification_lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole"
+}
+
 resource "aws_iam_role_policy" "notification_runtime" {
   name = "${local.name}-notification-runtime"
   role = aws_iam_role.notification_lambda.id
@@ -80,6 +92,8 @@ resource "aws_lambda_function" "notification_lambda" {
   }
 
   depends_on = [
+    aws_iam_role_policy_attachment.notification_basic,
+    aws_iam_role_policy_attachment.notification_sqs,
     aws_iam_role_policy.notification_runtime,
     aws_iam_role_policy.notification_ses,
     aws_cloudwatch_log_group.notification_lambda

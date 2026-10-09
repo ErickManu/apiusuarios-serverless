@@ -2,6 +2,12 @@
 import json
 import sys
 
+RETAINED_ATTACHMENTS = {
+    "aws_iam_role_policy_attachment.notification_basic":
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+    "aws_iam_role_policy_attachment.notification_sqs":
+        "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole",
+}
 REQUIRED_RESOURCES = {
     "aws_sns_topic.notifications",
     "aws_sqs_queue.notifications",
@@ -11,13 +17,7 @@ REQUIRED_RESOURCES = {
     "aws_iam_role_policy.backend_sns",
     "aws_iam_role_policy.notification_runtime",
     "aws_iam_role_policy.notification_ses",
-}
-RETIRED_ATTACHMENTS = {
-    "aws_iam_role_policy_attachment.notification_basic":
-        "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
-    "aws_iam_role_policy_attachment.notification_sqs":
-        "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole",
-}
+} | RETAINED_ATTACHMENTS.keys()
 
 
 def check_plan(plan):
@@ -27,9 +27,11 @@ def check_plan(plan):
     if missing:
         raise ValueError("Falta configuración requerida: " + ", ".join(sorted(missing)))
 
-    changes = {resource["address"]: resource["change"] for resource in plan.get("resource_changes", [])}
-    runtime = changes.get("aws_iam_role_policy.notification_runtime", {})
-    for address, change in changes.items():
+    # A current and a deposed instance can share an address. Check every entry;
+    # indexing by address would silently hide one of their actions.
+    changes = [(resource["address"], resource["change"])
+               for resource in plan.get("resource_changes", [])]
+    for address, change in changes:
         actions = change.get("actions", [])
         if "delete" not in actions:
             continue
@@ -38,17 +40,11 @@ def check_plan(plan):
             before, after = change.get("before") or {}, change.get("after") or {}
             if before.get("bucket") and before["bucket"] == after.get("bucket"):
                 continue
-        # Explicitly authorized IAM migration; never allow removing a role or queue.
-        if address in RETIRED_ATTACHMENTS and actions == ["delete"]:
-            old = change.get("before") or {}
-            new = runtime.get("after") or {}
-            if ("delete" not in runtime.get("actions", [])
-                    and new.get("role") and new["role"] == old.get("role")
-                    and old.get("policy_arn") == RETIRED_ATTACHMENTS[address]):
-                continue
+        # Phase 1 never retires managed attachments, even if the inline policy exists.
         raise ValueError("Eliminación/reemplazo no autorizado: " + address)
 
-    return [(address, change.get("actions", [])) for address, change in sorted(changes.items())
+    return [(address, change.get("actions", []))
+            for address, change in sorted(changes, key=lambda item: item[0])
             if change.get("actions") != ["no-op"]]
 
 

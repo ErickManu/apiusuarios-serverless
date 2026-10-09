@@ -6,6 +6,12 @@ No se ejecutaron apply, destroy, GitHub Actions, push ni envíos de correo.
 No se modificaron secretos, contraseñas ni `.env`. Maven descargó únicamente
 dependencias de pruebas tras autorizarse la escritura en su caché local.
 
+Actualización: la [fase 1 de la migración IAM](notification-infrastructure-proposal.md)
+conserva los dos attachments administrados junto con la política limitada.
+La retirada queda para una fase 2 separada; no se ejecutó ninguna fase en AWS
+durante esta preparación. La tabla de 22 archivos al final corresponde a la
+revisión inicial, anterior a este ajuste.
+
 ## Qué demuestra la evidencia sobre SNS
 
 - Se inspeccionaron todos los `.tf`: backend, provider, versiones, variables,
@@ -24,24 +30,26 @@ dependencias de pruebas tras autorizarse la escritura en su caché local.
 - Los dos respaldos locales de estado tienen serial 28 y no incluyen SNS.
   No describen el estado remoto actual. No se consultó ni alteró ese estado.
 
-**La causa exacta de la eliminación no está demostrada.** Hay mecanismos
-que deben contrastarse con el registro del despliegue, no asumirse:
+**La revisión posterior de los logs de GitHub demuestra el mecanismo inmediato
+de eliminación**, antes de añadir `prevent_destroy`:
 
-1. Aplicar una revisión anterior del código, sin el recurso SNS, sobre el mismo
-   estado remoto puede planificar su eliminación. El historial sí contiene un
-   workflow anterior automático por `push` (`26e514c`), pero no disponemos de
-   sus ejecuciones ni de sus planes para atribuirle este incidente.
-2. Un reemplazo forzado/tainted o una instancia deposed con el mismo nombre
-   merece revisión. `aws_api_gateway_deployment.backend` tiene
-   `create_before_destroy`, y su cadena de dependencias alcanza Lambda y SNS.
-   Terraform puede propagar esa regla a dependencias. SNS `CreateTopic` devuelve
-   el ARN existente cuando ya existe un tema del mismo propietario y nombre;
-   por eso un ciclo crear/retiro de una instancia anterior del mismo ARN puede
-   ser peligroso. No hay evidencia local de taint, deposed o `-replace` en este
-   incidente: este mecanismo es una hipótesis, no una conclusión.
-3. Una eliminación externa o un cambio de cuenta/región requiere los eventos
-   AWS correspondientes. El workflow ahora fija `us-east-2`, evitando depender
-   de un secreto de región que pudiera estar vacío o diferir del backend.
+1. La [ejecución #9](https://github.com/ErickManu/apiusuarios-serverless/actions/runs/37849712946)
+   intentó crear SNS y falló posteriormente con 403 en `SNS:ListTagsForResource`.
+2. El plan de la [ejecución #10](https://github.com/ErickManu/apiusuarios-serverless/actions/runs/37850938108)
+   informó literalmente que `aws_sns_topic.notifications` estaba `tainted`
+   y debía reemplazarse.
+3. Su aplicación registró creación completada y, después, destrucción del
+   `deposed object 8e886c94` con **el mismo ARN**. Esto explica que el tema recién
+   creado terminase eliminado. No fue una eliminación del tema causada por
+   reemplazar el JAR.
+
+La secuencia concuerda con la creación idempotente de SNS para un mismo nombre
+y propietario, y con el reemplazo creando antes de destruir. El deployment de
+API Gateway declara `create_before_destroy` y su cadena alcanza SNS; Terraform
+puede propagar esa regla. Esa propagación es la explicación técnica consistente
+con el código y los logs, no una inspección del grafo/estado remoto histórico.
+No se consultaron eventos CloudTrail; queda pendiente esa corroboración si se
+necesita una auditoría de la identidad y de las llamadas AWS.
 
 El reemplazo de `aws_s3_object.lambda_code` es esperable: la clave incluye el
 hash del JAR. Esa eliminación corresponde al objeto del artefacto anterior,
@@ -67,10 +75,11 @@ y [CreateTopic de SNS](https://docs.aws.amazon.com/sns/latest/api/API_CreateTopi
   Lambda consume la cola mediante el rol de ejecución.
 - Publicación del backend: solo `sns:Publish` sobre el tema. SES: solo
   `ses:SendEmail` sobre la identidad de correo configurada, en la misma región.
-- Por autorización del usuario, se sustituyeron los dos attachments
-  administrados de la Lambda Python por permisos de logs sobre su log group y
-  `ReceiveMessage`, `DeleteMessage`, `GetQueueAttributes` sobre su cola.
-  No se concedieron permisos administrativos ni se añadieron servicios.
+- Por autorización del usuario, la fase 1 conserva los dos attachments
+  administrados de la Lambda Python y añade la inline con permisos de logs
+  sobre su log group y `ReceiveMessage`, `DeleteMessage`, `GetQueueAttributes`
+  sobre su cola. La Lambda espera ambas administradas, la inline, SES y el
+  log group. No se concedieron permisos administrativos ni se añadieron servicios.
 - La Lambda Java ahora espera la política de publicación y la suscripción
   antes de actualizarse. IAM puede requerir propagación al desplegar; esto no
   prueba ni corrige por sí mismo una eliminación del tema.
@@ -116,9 +125,12 @@ de recursos. Esas consultas no se ejecutaron en esta revisión.
 
 `scripts/check_terraform_plan.py` comprueba el JSON del plan antes de apply:
 exige la configuración de notificaciones y bloquea eliminaciones/reemplazos
-inesperados. Excepciones limitadas: reemplazar el JAR en el mismo bucket y
-retirar los dos attachments IAM autorizados cuando la política inline está
-presente sobre el mismo rol. Solo imprime direcciones/acciones, sin valores.
+inesperados. También exige los dos attachments administrados de la fase 1 y
+prohíbe retirarlos/reemplazarlos incluso con la inline presente. La única
+excepción es reemplazar el JAR en el mismo bucket.
+Revisa cada instancia, incluyendo las `deposed` que compartan dirección con
+la actual; no agrupa por dirección ni puede ocultar su eliminación.
+Solo imprime direcciones/acciones, sin valores.
 
 `prevent_destroy` bloquea planes que destruyan/reemplacen el tema mientras
 la declaración siga presente. No protege frente a borrar la declaración,
@@ -143,15 +155,20 @@ git diff --check
 - Maven Java 21: **BUILD SUCCESS**, 23 pruebas sin fallos, JAR Lambda generado.
   Se comprobaron login, CRUD, datos, archivos, JWT/CORS y notificaciones.
   Se conservan avisos del empaquetado Shade sobre metadatos compartidos.
-- Python: 7 pruebas del consumidor y 7 del verificador del plan, sin fallos.
-- Terraform: formato y validación correctos; un plan de pruebas con siete
+- Python: 7 pruebas del consumidor y 10 del verificador del plan, sin fallos.
+- Terraform: formato y validación correctos; un plan de pruebas con ocho
   aserciones, proveedores AWS/archive simulados, sin recursos reales.
   El archivo `pom.xml` sirve solo de fixture de hash en esa prueba.
+  SNS se propone solo como creación; los attachments se conservan con las
+  mismas direcciones, rol y ARN del código anterior y del último plan remoto.
 - Las pruebas utilizan H2 y clientes AWS simulados: no acceden a Neon ni SES.
 - No se generó un plan real actualizado; los resultados no confirman el estado
   actual de AWS ni la entrega real de correos.
+  Un intento adicional de `terraform graph` con el backend S3 no pudo validar
+  credenciales STS por la restricción de red y se detuvo. Las dependencias se
+  comprobaron en los archivos locales; no se obtuvo un grafo remoto.
 
-## Archivos modificados o añadidos
+## Archivos modificados o añadidos en la revisión inicial
 
 | Archivo | Cambio |
 | --- | --- |
@@ -180,15 +197,17 @@ git diff --check
 
 ## Pendiente antes de cualquier despliegue
 
-1. Revisar el log exacto del despliegue que creó/eliminó el tema y sus acciones
-   Terraform. Consultar los eventos existentes `CreateTopic`/`DeleteTopic` de
-   CloudTrail en `us-east-2` para identificar hora, identidad y origen. No hace
-   falta crear trails para esta investigación si esos eventos ya están disponibles.
+1. Los logs ya demuestran el reemplazo tainted y la eliminación del mismo ARN
+   descritos arriba. Para corroborar la identidad y las llamadas AWS, consultar
+   más adelante los eventos existentes `CreateTopic`/`DeleteTopic` de CloudTrail
+   en `us-east-2`, sin crear trails nuevos para esta investigación.
 2. Confirmar cuenta, región, workspace `default` y estado S3 del backend.
    No migrar, borrar ni restaurar estado basándose en los respaldos anteriores
    a SNS. Generar un plan nuevo y revisarlo; no reutilizar `terraform/tfplan`.
-   El plan puede incluir ahora una política IAM nueva y dos retiradas de
-   attachments autorizadas, además de los cambios reportados anteriormente.
+   El último plan remoto (#12) era de 4 creaciones, 4 modificaciones y 3
+   eliminaciones: dos attachments y el reemplazo del JAR. Esta fase 1 conserva
+   los attachments: el próximo plan no debe retirarlos. El verificador actualizado
+   bloquea el plan anterior; el plan remoto debe regenerarse antes de aplicar.
 3. Verificar en SES `us-east-2` la identidad exacta de correo del remitente.
    La política actual apunta al ARN de esa dirección; verificar solo un dominio
    puede exigir revisar el ARN autorizado. En sandbox también deben estar
