@@ -1,0 +1,88 @@
+{
+  "tipo": "derivado de resúmenes existentes; no ejecución nueva",
+  "resultados": [
+    {
+      "actividad": "Actividad 1",
+      "fuente_json": "evidencias/actividad1-20261016-005817.json",
+      "sha256": "304383e799d1ef365cd5d9cdd46562b924278d1cdc3db4c490ee74435c728b57",
+      "configuracion_del_guion_no_medicion": {
+        "vus": 10,
+        "duracion_s": 60,
+        "max_post_por_vu": 3
+      },
+      "mediciones_json": {
+        "solicitudes": 30,
+        "checks_202_correctos": 30,
+        "checks_fallidos": 0,
+        "errores_porcentaje": 0,
+        "throughput_post_s": 0.43368119485032547,
+        "latencia_global_ms": {
+          "avg": 8587.785603333336,
+          "min": 94.5398,
+          "max": 26885.3309,
+          "p(95)": 26538.440884999996,
+          "p(99)": 26876.780801
+        },
+        "latencia_aceptadas_media_ms": 8587.785603333336,
+        "vus_gauge": {
+          "min": 2,
+          "max": 10,
+          "value": 2
+        }
+      },
+      "calculos_derivados_no_muestras_individuales": {
+        "latencia_fallidas_media_ms": null
+      }
+    },
+    {
+      "actividad": "Actividad 2 · 50 VUs",
+      "fuente_json": "evidencias/actividad2-50vus-20261016-014407.json",
+      "sha256": "13d54e2798f9a1e913a6c59e84a4eaa1d8b3beba8abad09db5f9e1bfbc3384eb",
+      "configuracion_del_guion_no_medicion": {
+        "vus": 50,
+        "duracion_s": 120,
+        "max_post_por_vu": 1
+      },
+      "mediciones_json": {
+        "solicitudes": 50,
+        "checks_202_correctos": 10,
+        "checks_fallidos": 40,
+        "errores_porcentaje": 80.0,
+        "throughput_post_s": 0.4135801285071212,
+        "latencia_global_ms": {
+          "avg": 5127.91484,
+          "min": 75.1487,
+          "max": 26458.999,
+          "p(95)": 25687.661630000002,
+          "p(99)": 26104.943521999998
+        },
+        "latencia_aceptadas_media_ms": 25295.20983,
+        "vus_gauge": {
+          "max": 50,
+          "value": 50,
+          "min": 50
+        }
+      },
+      "calculos_derivados_no_muestras_individuales": {
+        "latencia_fallidas_media_ms": 86.09109250000037
+      }
+    }
+  ],
+  "confirmaciones_usuario_no_exportaciones_cloudwatch": {
+    "fuente": "mensaje del usuario de 2026-10-16",
+    "region": "us-east-2",
+    "cuota_regional_lambda": 10,
+    "throttles_actividad2": 40,
+    "concurrencia_maxima_actividad2": 10,
+    "exportacion_adjunta": false
+  },
+  "pendientes": {
+    "codigos_http_40_fallidas": null,
+    "tiempo_recuperacion_real_s": null,
+    "escenarios_no_ejecutados_vus": [
+      100,
+      250,
+      500
+    ]
+  }
+}

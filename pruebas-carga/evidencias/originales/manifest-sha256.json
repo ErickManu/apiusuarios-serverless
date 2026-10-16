@@ -1,0 +1,35 @@
+{
+  "tipo": "integridad de originales locales; no certifica fecha de AWS",
+  "archivos": [
+    {
+      "ruta": "evidencias/actividad1-20261016-005817.json",
+      "bytes": 3462,
+      "sha256": "304383e799d1ef365cd5d9cdd46562b924278d1cdc3db4c490ee74435c728b57"
+    },
+    {
+      "ruta": "evidencias/actividad2-50vus-20261016-014407.json",
+      "bytes": 3501,
+      "sha256": "13d54e2798f9a1e913a6c59e84a4eaa1d8b3beba8abad09db5f9e1bfbc3384eb"
+    },
+    {
+      "ruta": "evidencias/simulador-ses-2.json",
+      "bytes": 2660,
+      "sha256": "999d950a9a52253bb33c4c4325e599e0bf4d6687dc70b0880332493d67203997"
+    },
+    {
+      "ruta": "evidencias/simulador-ses.json",
+      "bytes": 2500,
+      "sha256": "f2b618091a6986811563f20d14c5bf37e190f501296470781266792b7deb7c4b"
+    },
+    {
+      "ruta": "evidencias/verificacion-2.json",
+      "bytes": 2677,
+      "sha256": "38539a9e888842f3e61317e45f0c6a5141ef9c7f69a1c52f7b17ba8691396c29"
+    },
+    {
+      "ruta": "evidencias/verificacion-resumen.json",
+      "bytes": 2464,
+      "sha256": "6dfeaf4b842b0c28bbfe8768bcd4f703e38f0ce372d3ff45eb44b583fa056d66"
+    }
+  ]
+}

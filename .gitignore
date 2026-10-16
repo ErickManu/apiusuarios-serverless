@@ -47,3 +47,36 @@ terraform/notification-lambda.zip
 __pycache__/
 *.pyc
 target-review-*.log
+
+### Entrega universitaria: secretos y artefactos privados ###
+**/.env
+**/.env.*
+!**/.env.example
+**/.aws/
+**/credentials
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+!**/*.tfvars.example
+*.tfplan
+*.pem
+*.key
+*.p12
+*.pfx
+*.log
+pruebas-carga/evidencias/cloudwatch/privados/
+pruebas-carga/herramientas/.cache/
+
+### Dependencias, cachés y volcados locales ###
+node_modules/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.gradle/
+*.hprof
+*.jfr
+*.tfvars.backup
+*.tfvars.json.backup
